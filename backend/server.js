@@ -43,42 +43,42 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
     try {
         const filePath = req.file.path;
         
-        // Prepare FormData for ML API
-        const formData = new FormData();
-        // Since cloud proxies like Render often block 'chunked' multipart transfers without explicit Content-Length,
-        // we load the file fully into memory buffer so the FormData library calculates exact payload sizes automatically!
-        const fileContent = fs.readFileSync(filePath);
-        formData.append('file', fileContent, { filename: req.file.originalname });
-
-        // Let Python container process the image request
         let pythonApiUrl = process.env.PYTHON_API_URL || 'http://127.0.0.1:8000';
         if (!pythonApiUrl.endsWith('/predict')) pythonApiUrl += '/predict';
         
-        console.log(`Routing image to ML API at: ${pythonApiUrl}`);
+        console.log(`Routing image via native fetch to ML API at: ${pythonApiUrl}`);
         
-        const response = await axios.post(pythonApiUrl, formData, {
-            headers: { 
-                ...formData.getHeaders(),
-                'Content-Length': formData.getLengthSync()
-            },
-            maxContentLength: Infinity,
-            maxBodyLength: Infinity,
-            responseType: 'arraybuffer' // Request Buffer back
+        // Native Fetch Implementation bypassing Axios streaming bottlenecks
+        const fileBuffer = fs.readFileSync(filePath);
+        const blob = new Blob([fileBuffer], { type: req.file.mimetype || 'image/jpeg' });
+        
+        const nativeFormData = new globalThis.FormData();
+        nativeFormData.append('file', blob, req.file.originalname);
+
+        const response = await fetch(pythonApiUrl, {
+            method: 'POST',
+            body: nativeFormData
         });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Cloud API responded with status ${response.status}: ${errText}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
 
         const id = Date.now().toString();
         const inputGalleryPath = path.join(galleryFolder, `${id}_input.jpg`);
         const outputGalleryPath = path.join(galleryFolder, `${id}_output.jpg`);
 
-        // Save original and mocked versions respectively to the permanent gallery disk
         fs.copyFileSync(filePath, inputGalleryPath);
-        fs.writeFileSync(outputGalleryPath, response.data);
+        fs.writeFileSync(outputGalleryPath, buffer);
 
-        // Standard Buffer processing towards UI active memory context
-        const base64Image = Buffer.from(response.data, 'binary').toString('base64');
-        const mimeType = response.headers['content-type'] || 'image/jpeg';
+        const base64Image = buffer.toString('base64');
+        const mimeType = response.headers.get('content-type') || 'image/jpeg';
         
-        fs.unlinkSync(filePath); // clear out original redundant path
+        fs.unlinkSync(filePath); 
 
         res.json({
             success: true,
@@ -89,20 +89,10 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
     } catch (error) {
         console.error('Error in /colorize endpoint:', error.message);
         
-        let detailedError = error.message;
-        if (error.response && error.response.data) {
-            try {
-                // If the arraybuffer response is actually an error message from FastAPI
-                const errorStr = Buffer.from(error.response.data).toString('utf-8');
-                console.error('FastAPI Failure Data:', errorStr);
-                detailedError += ` | Details: ${errorStr}`;
-            } catch (e) {}
-        }
-        
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
-        res.status(500).json({ error: `ML Api Proxy Failed: ${detailedError}` });
+        res.status(500).json({ error: `ML Api Proxy Failed: ${error.message}` });
     }
 });
 
