@@ -3,62 +3,66 @@ from fastapi.responses import StreamingResponse
 import uvicorn
 from PIL import Image
 import io
-import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
+try:
+    import torch
+    import torch.nn as nn
+    import torchvision.transforms as transforms
+
+    # Define the AutoEncoder Generator Model (Simplified UNet/AutoEncoder structure)
+    class ColorizationAutoEncoder(nn.Module):
+        def __init__(self):
+            super(ColorizationAutoEncoder, self).__init__()
+            # Encoder
+            self.encoder = nn.Sequential(
+                nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+                nn.BatchNorm2d(256),
+                nn.ReLU(inplace=True),
+            )
+            # Decoder
+            self.decoder = nn.Sequential(
+                nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(inplace=True),
+                nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+                nn.BatchNorm2d(64),
+                nn.ReLU(inplace=True),
+                nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1),
+                nn.Tanh() # Output values between -1 and 1
+            )
+
+        def forward(self, x):
+            features = self.encoder(x)
+            out = self.decoder(features)
+            return out
+
+    # Initialize model
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = ColorizationAutoEncoder().to(device)
+    # Note: For real world use, load trained weights here:
+    # model.load_state_dict(torch.load("pretrained_weights.pth", map_location=device))
+    model.eval()
+
+    # Transforms
+    transform_in = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.Resize((128, 128)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,))
+    ])
+
+    def denormalize(tensor):
+        tensor = tensor * 0.5 + 0.5
+        return tensor.clamp(0, 1)
+
+except ImportError:
+    print("PyTorch not installed. Running in mock Cloud-Deployment mode API exclusively.")
 
 app = FastAPI(title="Image Colorization API")
-
-# Define the AutoEncoder Generator Model (Simplified UNet/AutoEncoder structure)
-class ColorizationAutoEncoder(nn.Module):
-    def __init__(self):
-        super(ColorizationAutoEncoder, self).__init__()
-        # Encoder
-        self.encoder = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-        )
-        # Decoder
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(64, 3, kernel_size=4, stride=2, padding=1),
-            nn.Tanh() # Output values between -1 and 1
-        )
-
-    def forward(self, x):
-        features = self.encoder(x)
-        out = self.decoder(features)
-        return out
-
-# Initialize model
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = ColorizationAutoEncoder().to(device)
-# Note: For real world use, load trained weights here:
-# model.load_state_dict(torch.load("pretrained_weights.pth", map_location=device))
-model.eval()
-
-# Transforms
-transform_in = transforms.Compose([
-    transforms.Grayscale(num_output_channels=1),
-    transforms.Resize((128, 128)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
-])
-
-def denormalize(tensor):
-    tensor = tensor * 0.5 + 0.5
-    return tensor.clamp(0, 1)
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
