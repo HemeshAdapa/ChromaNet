@@ -12,7 +12,8 @@ export default function Gallery() {
 
   const fetchGallery = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/gallery');
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const res = await axios.get(`${backendUrl}/api/gallery`);
       setItems(res.data);
     } catch (error) {
       console.error('Failed to fetch gallery', error);
@@ -24,7 +25,8 @@ export default function Gallery() {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this colorized image?')) return;
     try {
-      await axios.delete(`http://localhost:5000/api/gallery/${id}`);
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      await axios.delete(`${backendUrl}/api/gallery/${id}`);
       setItems(items.filter(item => item.id !== id));
     } catch (error) {
       console.error('Failed to delete', error);

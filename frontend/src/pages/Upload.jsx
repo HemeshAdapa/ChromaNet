@@ -60,8 +60,8 @@ export default function Upload() {
     formData.append('image', file);
     
     try {
-      // Send to Node backend
-      const response = await axios.post('http://localhost:5000/colorize', formData, {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const response = await axios.post(`${backendUrl}/colorize`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

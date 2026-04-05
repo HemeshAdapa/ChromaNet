@@ -1,0 +1,22 @@
+services:
+  # The Python Deep Learning API
+  - type: web
+    name: chromanet-ml-api
+    env: python
+    rootDir: ml_api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+  # The Node.js Core Backend
+  - type: web
+    name: chromanet-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PYTHON_API_URL
+        fromService:
+          type: web
+          name: chromanet-ml-api
+          envVarKey: RENDER_EXTERNAL_URL

@@ -48,7 +48,9 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
         formData.append('file', fs.createReadStream(filePath));
 
         // Let Python container process the image request
-        const pythonApiUrl = 'http://127.0.0.1:8000/predict';
+        let pythonApiUrl = process.env.PYTHON_API_URL || 'http://127.0.0.1:8000';
+        if (!pythonApiUrl.endsWith('/predict')) pythonApiUrl += '/predict';
+        
         const response = await axios.post(pythonApiUrl, formData, {
             headers: { ...formData.getHeaders() },
             responseType: 'arraybuffer' // Request Buffer back
@@ -88,6 +90,9 @@ app.get('/api/gallery', (req, res) => {
     try {
         const files = fs.readdirSync(galleryFolder);
         const images = [];
+        
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        
         files.forEach(file => {
             if (file.endsWith('_input.jpg')) {
                 const id = file.split('_')[0];
@@ -95,8 +100,8 @@ app.get('/api/gallery', (req, res) => {
                 if (files.includes(expectedOutput)) {
                     images.push({
                         id,
-                        inputUrl: `http://localhost:${PORT}/gallery_files/${file}`,
-                        outputUrl: `http://localhost:${PORT}/gallery_files/${expectedOutput}`,
+                        inputUrl: `${baseUrl}/gallery_files/${file}`,
+                        outputUrl: `${baseUrl}/gallery_files/${expectedOutput}`,
                         timestamp: parseInt(id)
                     });
                 }
