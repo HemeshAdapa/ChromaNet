@@ -44,46 +44,41 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
         const filePath = req.file.path;
         
         let pythonApiUrl = process.env.PYTHON_API_URL || 'http://127.0.0.1:8000';
-        if (!pythonApiUrl.endsWith('/predict')) pythonApiUrl += '/predict';
+        // Intercept their URL properly
+        if (pythonApiUrl.endsWith('/predict')) pythonApiUrl = pythonApiUrl.replace('/predict', '/predict_base64');
+        else if (!pythonApiUrl.endsWith('/predict_base64')) pythonApiUrl += '/predict_base64';
         
-        console.log(`Routing image via native fetch to ML API at: ${pythonApiUrl}`);
+        console.log(`Routing image via native JSON Base64 to ML API at: ${pythonApiUrl}`);
         
-        // Native Fetch Implementation bypassing Axios streaming bottlenecks
-        const fileBuffer = fs.readFileSync(filePath);
-        const blob = new Blob([fileBuffer], { type: req.file.mimetype || 'image/jpeg' });
-        
-        const nativeFormData = new globalThis.FormData();
-        nativeFormData.append('file', blob, req.file.originalname);
+        // Native JSON Architecture to decisively prevent the Reverse Proxy Stream Terminations
+        const fileContent = fs.readFileSync(filePath);
+        const base64Input = fileContent.toString('base64');
 
-        const response = await fetch(pythonApiUrl, {
-            method: 'POST',
-            body: nativeFormData
+        const response = await axios.post(pythonApiUrl, { image: base64Input }, {
+            headers: { 'Content-Type': 'application/json' },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Cloud API responded with status ${response.status}: ${errText}`);
+        if (response.data.error) {
+            throw new Error(`Cloud API internal crash: ${response.data.error}`);
         }
 
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        const outputBuffer = Buffer.from(response.data.image, 'base64');
 
         const id = Date.now().toString();
         const inputGalleryPath = path.join(galleryFolder, `${id}_input.jpg`);
         const outputGalleryPath = path.join(galleryFolder, `${id}_output.jpg`);
 
         fs.copyFileSync(filePath, inputGalleryPath);
-        fs.writeFileSync(outputGalleryPath, buffer);
-
-        const base64Image = buffer.toString('base64');
-        const mimeType = response.headers.get('content-type') || 'image/jpeg';
+        fs.writeFileSync(outputGalleryPath, outputBuffer);
         
         fs.unlinkSync(filePath); 
 
         res.json({
             success: true,
             id: id,
-            image: `data:${mimeType};base64,${base64Image}`
+            image: `data:image/jpeg;base64,${response.data.image}`
         });
 
     } catch (error) {

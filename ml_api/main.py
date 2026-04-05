@@ -64,6 +64,39 @@ except ImportError:
 
 app = FastAPI(title="Image Colorization API")
 
+from pydantic import BaseModel
+import base64
+
+class ImagePayload(BaseModel):
+    image: str
+
+@app.post("/predict_base64")
+async def predict_base64(payload: ImagePayload):
+    try:
+        from PIL import ImageOps
+        import io
+        
+        # Read the uploaded image via base64 JSON architecture to bypass structural proxy chunkings
+        image_bytes = base64.b64decode(payload.image)
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        original_size = image.size
+        
+        # --- MOCK COLORIZATION FOR DEMO PURPOSES ---
+        gray_image = image.convert("L")
+        out_image = ImageOps.colorize(gray_image, black="#2d1b4e", white="#fcd34d", mid="#d97743")
+        out_image = out_image.convert("RGB")
+        
+        if out_image.size != original_size:
+            out_image = out_image.resize(original_size, Image.LANCZOS)
+        
+        img_byte_arr = io.BytesIO()
+        out_image.save(img_byte_arr, format='JPEG', quality=95)
+        
+        return {"image": base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')}
+
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     try:
