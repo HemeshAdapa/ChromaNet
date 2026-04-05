@@ -1,0 +1,22 @@
+# Node environment
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python environment
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Project specific
+backend/uploads/
+backend/gallery/
+*.pth
+*.pt
+
+# OS files
+.DS_Store
+Thumbs.db
