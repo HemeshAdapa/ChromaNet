@@ -45,7 +45,10 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
         
         // Prepare FormData for ML API
         const formData = new FormData();
-        formData.append('file', fs.createReadStream(filePath));
+        // Since cloud proxies like Render often block 'chunked' multipart transfers without explicit Content-Length,
+        // we load the file fully into memory buffer so the FormData library calculates exact payload sizes automatically!
+        const fileContent = fs.readFileSync(filePath);
+        formData.append('file', fileContent, { filename: req.file.originalname });
 
         // Let Python container process the image request
         let pythonApiUrl = process.env.PYTHON_API_URL || 'http://127.0.0.1:8000';
