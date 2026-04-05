@@ -54,8 +54,15 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
         let pythonApiUrl = process.env.PYTHON_API_URL || 'http://127.0.0.1:8000';
         if (!pythonApiUrl.endsWith('/predict')) pythonApiUrl += '/predict';
         
+        console.log(`Routing image to ML API at: ${pythonApiUrl}`);
+        
         const response = await axios.post(pythonApiUrl, formData, {
-            headers: { ...formData.getHeaders() },
+            headers: { 
+                ...formData.getHeaders(),
+                'Content-Length': formData.getLengthSync()
+            },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
             responseType: 'arraybuffer' // Request Buffer back
         });
 
@@ -81,10 +88,21 @@ app.post('/colorize', upload.single('image'), async (req, res) => {
 
     } catch (error) {
         console.error('Error in /colorize endpoint:', error.message);
+        
+        let detailedError = error.message;
+        if (error.response && error.response.data) {
+            try {
+                // If the arraybuffer response is actually an error message from FastAPI
+                const errorStr = Buffer.from(error.response.data).toString('utf-8');
+                console.error('FastAPI Failure Data:', errorStr);
+                detailedError += ` | Details: ${errorStr}`;
+            } catch (e) {}
+        }
+        
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
-        res.status(500).json({ error: 'Failed to process image through ML model' });
+        res.status(500).json({ error: `ML Api Proxy Failed: ${detailedError}` });
     }
 });
 
